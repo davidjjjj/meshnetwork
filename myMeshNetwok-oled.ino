@@ -1,14 +1,22 @@
+#include <brzo_i2c.h>
+
 //************************************************************
 // A simple ESP8266 painlessMesh application:
 // - send MeshTopology to serial port. Received by the Python app on PC side to visualize the mesh topology
 // - receive 'broadcast' or 'single' command from serial port, which is sent by the Python app on PC side 
 // - read and write 2 parameters, i.e. 'timer' and 'brightness'
 // 
-// 
 // Yoppy ~ Dec 2018
 //
 //************************************************************
-#include <painlessMesh.h>
+#include <painlessMesh.h>   // looks like need to install painlessMesh first.
+#include <ESP8266WiFi.h>
+#include <ESP8266WiFiMesh.h>
+//#include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
+//#include <brzo_i2c.h> // Only needed for Arduino 1.6.5 and earlier
+#include "SSD1306Brzo.h"
+
+SSD1306Brzo display(0x3c, D3, D5);
 
 // some gpio pin that is connected to an LED...
 // on my rig, this is 5, change to the right number of your LED.
@@ -40,35 +48,47 @@ JsonObject& params = jsonBuffer.createObject();
 
 // uint32_t num_of_message_sent = 0;
 //uint32_t prev_num_of_message_sent = 0;
-bool calc_delay = true;
+bool calc_delay = true; 
 SimpleList<uint32_t> nodes;
+ char strBuffer[30];
+int request_i=0;
 
+String oledstr1;
+String oledstr2;
+String oledstr3;
+String oledstr4;
+String oledstr5;
 
 void sendMessage() ; // Prototype
 Task taskSendMessage( TASK_SECOND * 2  /*10000UL*/, TASK_FOREVER, &sendMessage ); // start with a one or x second(s) interval
 
 // void printStatus();
 // Task taskPrintStatus( TASK_SECOND * 1  /*10000UL*/, TASK_FOREVER, &printStatus ); // start with a one second interval
-
 //float dimLevel[2];
 
 void readSerial();
 // serial speed 115.200 bps = 115.000/10bit/1000ms = 11.5 chars/ms.
 // read serial every 20 ms. at most 20*11.5 = 230 chars accumulated in serial buffer each task run
 Task taskReadSerial(TASK_MILLISECOND * 20, TASK_FOREVER, &readSerial);
-
 // Task to blink the number of nodes
 Task blinkNoNodes;
 bool onFlag = false;
+void oledFlashDisplay();
 
+//........................setup...........................
 void setup() {
   Serial.begin(115200);
-
   pinMode(LED, OUTPUT);
 
   //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   //mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
   //mesh.setDebugMsgTypes(S_TIME /*| DEBUG | CONNECTION*/);  // set before init() so that you can see startup messages
+
+  display.init();
+  display.flipScreenVertically();
+  display.setFont(ArialMT_Plain_10);
+  oledstr5= "setting up mesh....";
+  oledFlashDisplay();
 
   mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
   mesh.onReceive(&receivedCallback);
@@ -86,8 +106,8 @@ void setup() {
   userScheduler.addTask(taskReadSerial);
   taskReadSerial.enable();
 
-  blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
-      // If on, switch off, else switch on
+  blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1)* 2, []() {
+     // If on, switch off, else switch on
       if (onFlag)
         onFlag = false;
       else
@@ -103,100 +123,85 @@ void setup() {
         blinkNoNodes.enableDelayed(BLINK_PERIOD - 
             (mesh.getNodeTime() % (BLINK_PERIOD*1000))/1000);
       }
-  });
+  });   //以上設定每週期閃動次數為節點數二倍
   userScheduler.addTask(blinkNoNodes);
   blinkNoNodes.enable();
 
   randomSeed(analogRead(A0));
+  oledstr5= "looping....";
+  oledFlashDisplay();
 }
+
+
+void oledFlashDisplay() {
+  display.clear();
+  display.drawString(0, 10,oledstr1);
+  display.drawString(0, 20,oledstr2);
+  display.drawString(0, 30,oledstr3);
+  display.drawString(0, 40,oledstr4);
+  display.drawString(0, 50,oledstr5);
+  display.display();
+}
+
 
 void loop() {
   userScheduler.execute(); // it will run mesh scheduler as well
   mesh.update();
-  digitalWrite(LED, !onFlag);
+  digitalWrite(LED, !onFlag);  //閃完後保持常關
 }
 
 void sendMessage() {
-     // String msg = "My node ID:  ";
-     // msg += mesh.getNodeId();
+     String msg = "My node ID:  ";
+     msg += mesh.getNodeId();
+
+     oledstr4=msg;
+     
      // msg += " myFreeMemory: " + String(ESP.getFreeHeap());
      // Serial.printf("%s\n", msg.c_str());     
-     
-     /* String msg = "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"                    
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"                    
-                    "0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0"; */
      //mesh.sendBroadcast(msg);
-
      //num_of_message_sent += 1;
-
+     
+    int nodeOrder=1;
+  
      String meshTopology = mesh.subConnectionJson();
      if (meshTopology != NULL)
           Serial.printf("MeshTopology: %s\n", meshTopology.c_str());
-    
+
+  sprintf(strBuffer, "loop #%d..Node%d.", request_i++, ESP.getChipId());
+  oledstr2=(String)strBuffer;
+  oledFlashDisplay();
+  
      nodes = mesh.getNodeList();
      // Serial.printf("Num nodes: %d\n", nodes.size());
   
      if (calc_delay) {
           SimpleList<uint32_t>::iterator node = nodes.begin();
+ 
+          //   display.clear();
+          
           while (node != nodes.end()) {
                mesh.startDelayMeas(*node);        // send a delay measurement request
-               node++;
+
+ 
+    
+     sprintf(strBuffer, " %u", *node);
+     oledstr3=(String)strBuffer;
+     oledFlashDisplay();
+
+       nodeOrder++;
+       node++;
           }
-          calc_delay = false;                     // Comment out to do delay measurement repeatedly
+
+          
+       calc_delay = false;                     // Comment out to do delay measurement repeatedly
      }
 
      //Serial.printf("Sending message: %s\n", msg.c_str());  
      //taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
 
-     //在此後加入傳感器上傳的部份
-      float sensorValue=12.55; 
-      DynamicJsonBuffer jsonBuffer;
+      StaticJsonBuffer<80> jsonBuffer;
       JsonObject& sensormsg = jsonBuffer.createObject();
-      JsonObject& sensorbroadcast = jsonBuffer.createObject();
-      sensormsg["node-id"] = mesh.getNodeId();
-      sensormsg["sensor-value"]=sensorValue;
-      sensorbroadcast["sensorBroadcast"]=sensormsg;
-      String sstr;
-      sensorbroadcast.printTo(sstr); 
-      Serial.println(sstr);     
-      mesh.sendBroadcast(sstr);
+      
 }
 
 void readSerial()
@@ -207,7 +212,7 @@ void readSerial()
 	  if (Serial.available())
 	  {
 		  data = Serial.readStringUntil('\n');
-		  Serial.println("TSK Serial received:" + data);
+		  Serial.println("Serial received:" + data);
 
 		  DynamicJsonBuffer jsonBuffer(150);
 		  JsonObject &dataJSON = jsonBuffer.parseObject(data);
@@ -256,7 +261,7 @@ void receivedCallback(uint32_t from, String &msg)
   //Serial.printf("startHere: Received from %u msg=%s\n", from, msg.c_str());
 	String meshTopology = mesh.subConnectionJson();
 	if (meshTopology != NULL)
-	//Serial.printf("MeshTopology: %s\n", meshTopology.c_str());
+		Serial.printf("MeshTopology: %s\n", meshTopology.c_str());
 
 	Serial.printf("[ESP] WiFi received: %s\n", msg.c_str());
 
@@ -323,12 +328,6 @@ void receivedCallback(uint32_t from, String &msg)
 		else if(message.containsKey("set-reply")){
 			Serial.println("[ESP] <found a 'set-reply' key.>");
 		}
-    else if(message.containsKey("sensorBroadcast")){
-      JsonObject& sensorParams = message["sensorBroadcast"];
-      String sstr;
-      sensorParams.printTo(sstr);
-      Serial.println(sstr);
-    }
 
 		else Serial.println("[ESP] Keys not found.");
   }					
@@ -338,15 +337,22 @@ void receivedCallback(uint32_t from, String &msg)
 void newConnectionCallback(uint32_t nodeId) {
   // Reset blink task
   onFlag = false;
+  
   blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
   blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD*1000))/1000);
- 
-  Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
+  
+  sprintf(strBuffer,"New node,Id = %u\n", nodeId);
+ // display.clear();
+  display.drawString(0, 20, strBuffer);
+  display.display();
+  Serial.printf(strBuffer);
 
   calc_delay = true;
 }
 
 void changedConnectionCallback() {
+  char nodechars[10];
+  int nodeOrder=1;
   Serial.printf("Changed connections %s\n", mesh.subConnectionJson().c_str());
   // Reset blink task
   onFlag = false;
@@ -358,10 +364,21 @@ void changedConnectionCallback() {
   Serial.printf("Num nodes: %d\n", nodes.size());
   Serial.printf("Connection list:");
 
+  //display.clear();
+  display.drawString(0, 20, "Connection list:");
+  display.display();
+
+
   SimpleList<uint32_t>::iterator node = nodes.begin();
   while (node != nodes.end()) {
     Serial.printf(" %u", *node);
+ //   display.clear();
+     display.drawString(0, 10, "node:");
+      sprintf(nodechars, " %u", *node);
+     display.drawString(0,10+10*nodeOrder, nodechars);
+       display.display();
     node++;
+    nodeOrder++;
   }
   Serial.println();
   calc_delay = true;
