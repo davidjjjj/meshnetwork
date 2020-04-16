@@ -51,11 +51,12 @@ def read_json_string(ser):
             #if line != None:  # check if it is a JSON string
             return 'myFreeMem', line
             #else:
-            #    return None, None  # when it is not a JSON string
+            #新增下面二個，將一些重覆出現的字串消掉return None, None
         elif '[ESP]' in line:
             return  None, None
         elif 'Broadcast' in line:
             return  None, None
+            #在串列口看見感測器值關鍵字時，傳給線緒函數處理
         elif 'sensor-value' in line:
             return 'sensor-value', line
 

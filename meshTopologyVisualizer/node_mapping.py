@@ -226,8 +226,8 @@ def recursive_node_mapping(obj, currentNodeId, graph):
         # find empty position in node_mapping, update current_node, update direction, update relation_list
         #self.find_empty_position(neighbourNodeId, current_node_pos, direction, node_map, relation_list)
 
-        #print (neighbourNodeId)
-        graph.add_edge(currentNodeId, neighbourNodeId)
+        print (neighbourNodeId)
+        graph.add_edge(currentNodeId, neighbourNodeId, name = neighbourNodeId)
 
         # go into the node's subconnections
         for item in obj["subs"]:

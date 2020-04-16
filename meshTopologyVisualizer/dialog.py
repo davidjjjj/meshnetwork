@@ -104,6 +104,7 @@ class BroadcastDialog:
 
     def displaySensorValue(self, sensorValueMem):
         print(sensorValueMem)
+        #後來發現其實這個函數不需要
 
 
 
